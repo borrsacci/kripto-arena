@@ -1,0 +1,13 @@
+# Supabase CLI ayarları. GitHub Actions bu klasördeki veritabanı değişikliklerini (migrations)
+# ve sunucu fonksiyonlarını (functions) Supabase projesine yükler.
+project_id = "kripto-arena"
+
+# Fonksiyonlar oturumu kendi içinde doğrular (yeni Supabase anahtar sistemiyle uyumlu)
+[functions.trade]
+verify_jwt = false
+
+[functions.tick]
+verify_jwt = false
+
+[functions.admin-users]
+verify_jwt = false

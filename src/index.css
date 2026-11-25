@@ -1,0 +1,140 @@
+@import 'tailwindcss';
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/latin-600.css';
+@import '@fontsource/inter/latin-700.css';
+@import '@fontsource/inter/latin-ext-400.css';
+@import '@fontsource/inter/latin-ext-500.css';
+@import '@fontsource/inter/latin-ext-600.css';
+@import '@fontsource/inter/latin-ext-700.css';
+@import '@fontsource/space-grotesk/latin-500.css';
+@import '@fontsource/space-grotesk/latin-600.css';
+@import '@fontsource/space-grotesk/latin-700.css';
+@import '@fontsource/space-grotesk/latin-ext-500.css';
+@import '@fontsource/space-grotesk/latin-ext-600.css';
+@import '@fontsource/space-grotesk/latin-ext-700.css';
+
+/* Gece terminali paleti: çok koyu lacivert zemin, yükselişe yeşil, düşüşe kırmızı,
+   marka ve seviye için mor vurgu, ödül ve başarım için altın */
+@theme {
+  --color-ink: #0b0e14;
+  --color-panel: #131823;
+  --color-panel-2: #1a2030;
+  --color-line: #262d3d;
+  --color-text: #e9ecf2;
+  --color-mute: #9aa3b5;
+  --color-dim: #626b7f;
+  --color-up: #16c784;
+  --color-down: #f6465d;
+  --color-accent: #8b7cff;
+  --color-accent-deep: #6a58f0;
+  --color-gold: #f2c14e;
+  --color-warn: #f5a524;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+@supports (height: 100dvh) {
+  #root {
+    height: 100dvh;
+  }
+}
+body {
+  background: var(--color-ink);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+.ink-bg {
+  background:
+    radial-gradient(120% 60% at 50% -10%, rgba(139, 124, 255, 0.09), transparent 55%),
+    var(--color-ink);
+}
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+/* Kaldıraç kaydırıcısı */
+input[type='range'].lev {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 28px;
+  background: transparent;
+}
+input[type='range'].lev::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--color-up), var(--color-warn) 55%, var(--color-down));
+}
+input[type='range'].lev::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: var(--color-text);
+  border: 4px solid var(--color-ink);
+  box-shadow: 0 0 0 1px var(--color-line);
+}
+input[type='range'].lev::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--color-up), var(--color-warn) 55%, var(--color-down));
+}
+input[type='range'].lev::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-text);
+  border: 4px solid var(--color-ink);
+}
+/* fiyat değişince kısa yanıp sönme */
+@keyframes flash-up {
+  from { color: var(--color-up); }
+}
+@keyframes flash-down {
+  from { color: var(--color-down); }
+}
+.flash-up {
+  animation: flash-up 0.8s ease-out;
+}
+.flash-down {
+  animation: flash-down 0.8s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

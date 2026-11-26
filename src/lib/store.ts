@@ -54,6 +54,8 @@ const fixOrd = (o: any) => num<Order>(o, NUM_ORD);
 const PROFILE_COLS = '*';
 
 let channel: RealtimeChannel | null = null;
+/** gerçek zamanlı kanal bağlı mı (bağlıysa tam yenilemeye gerek yok) */
+let live = false;
 /** kutlanmış başarımlar ve bildirilmiş kapanışlar (aynı olay iki kez gösterilmesin) */
 const knownAch = new Set<string>();
 const knownClosed = new Set<string>();
@@ -94,11 +96,17 @@ export const useStore = create<State>((set, get) => {
     history: async () => {
       const uid = get().uid;
       if (!uid) return;
-      const { data } = await supabase.from('positions').select('*').eq('user_id', uid).neq('status', 'open').order('closed_at', { ascending: false }).limit(300);
+      // ilk yüklemede son 300 işlem, sonra sadece yeni kapananlar
+      const cur = get().history;
+      let q = supabase.from('positions').select('*').eq('user_id', uid).neq('status', 'open').order('closed_at', { ascending: false });
+      q = cur.length ? q.gte('closed_at', cur[0].closed_at!) : q.limit(300);
+      const { data } = await q;
       if (!data) return;
-      const history = data.map(fixPos);
+      const fresh = data.map(fixPos);
+      const ids = new Set(fresh.map((p) => p.id));
+      const history = [...fresh, ...cur.filter((p) => !ids.has(p.id))].slice(0, 300);
       set({ history });
-      for (const p of history.slice().reverse()) {
+      for (const p of fresh.slice().reverse()) {
         if (knownClosed.has(p.id)) continue;
         knownClosed.add(p.id);
         if (primed && p.close_reason && p.close_reason !== 'manual') emit({ kind: 'closed', position: p });
@@ -187,6 +195,7 @@ export const useStore = create<State>((set, get) => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'coins' }, () => loaders.coins())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, () => loaders.txs())
       .subscribe((status) => {
+        live = status === 'SUBSCRIBED';
         if (status === 'SUBSCRIBED') get().refresh('me', 'positions', 'orders', 'history', 'achievements');
       });
   };
@@ -252,9 +261,11 @@ export const useStore = create<State>((set, get) => {
 
     sync: async () => {
       if (!get().uid || get().me?.status !== 'active') return;
-      await invoke('trade', { action: 'sync' }).catch(() => {});
-      // gerçek zamanlı bağlantı kopmuş olsa bile ekran güncel kalsın
-      await get().refresh('me', 'positions', 'orders', 'history', 'achievements', 'profiles');
+      const r = await invoke<{ filled: number; closed: number }>('trade', { action: 'sync' }).catch(() => null);
+      // Gerçek zamanlı kanal bağlıysa değişiklikler zaten anında gelir; sadece bir şey değiştiyse
+      // ya da kanal kopmuşsa tazele (ücretsiz plandaki veri trafiği kotası boşa harcanmasın)
+      if (!live || (r && (r.filled || r.closed))) await get().refresh('me', 'positions', 'orders', 'history', 'achievements', 'profiles');
+      else await get().refresh('me');
     },
 
     shiftEvent: () => set((s) => ({ events: s.events.slice(1) })),

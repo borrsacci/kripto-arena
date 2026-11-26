@@ -1,0 +1,45 @@
+# Sağlık kontrolü (sadece okur): açık/kapanmış pozisyonlar, zamanlayıcı, sunucu yanıtları
+# ve giriş fiyatlarının Binance'in o anki gerçek fiyatıyla karşılaştırması.
+name: Kontrol
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Sorgular
+        run: |
+          q() {
+            echo "::group::$1"
+            jq -n --arg q "$2" '{query: $q}' | curl -fsS -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+              -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data-binary @- | tee "/tmp/$1.json" | jq -c '.[]'
+            echo "::endgroup::"
+          }
+          q profiller "select username, is_admin, balance, deposits, xp, trades, wins, realized_pnl, volume from profiles order by created_at"
+          q pozisyonlar "select p.id, pr.username, p.symbol, p.side, p.leverage, p.margin, p.qty, p.entry_price, p.liq_price, p.tp, p.sl, p.open_fee, p.status, p.close_price, p.pnl, p.roe, p.close_reason, p.opened_at, p.closed_at, p.checked_until from positions p join profiles pr on pr.id = p.user_id order by p.opened_at"
+          q emirler "select symbol, side, leverage, margin, price, status, created_at, done_at, checked_until from orders order by created_at"
+          q basarimlar "select pr.username, a.code, a.unlocked_at from achievements a join profiles pr on pr.id = a.user_id order by a.unlocked_at"
+          q hareketler "select pr.username, t.kind, t.amount, t.balance_after, t.note, t.created_at from transactions t join profiles pr on pr.id = t.user_id order by t.id"
+          q ayarlar "select key, case when key = 'tick_secret' then '(gizli)' else value end as value from app_config"
+          q cron "select jobname, schedule, active from cron.job"
+          q cron_calismalari "select status, return_message, start_time from cron.job_run_details order by start_time desc limit 5"
+          q tick_yanitlari "select status_code, left(content::text, 300) as content, created from net._http_response order by created desc limit 5"
+          q para_korunumu "select pr.username, pr.balance, coalesce(sum(t.amount),0) as hareket_toplami, pr.balance = coalesce(sum(t.amount),0) as tutarli from profiles pr left join transactions t on t.user_id = pr.id group by pr.id"
+
+      - name: Giriş fiyatları Binance ile tutarlı mı?
+        run: |
+          jq -c '.[]' /tmp/pozisyonlar.json | while read -r p; do
+            sym=$(echo "$p" | jq -r .symbol); entry=$(echo "$p" | jq -r .entry_price); at=$(echo "$p" | jq -r .opened_at)
+            ms=$(( $(date -d "$at" +%s) * 1000 ))
+            k=$(curl -fsS "https://data-api.binance.vision/api/v3/klines?symbol=${sym}USDT&interval=1s&startTime=$((ms-3000))&endTime=$((ms+3000))")
+            lo=$(echo "$k" | jq '[.[][3]|tonumber]|min'); hi=$(echo "$k" | jq '[.[][2]|tonumber]|max')
+            echo "$sym $(echo "$p" | jq -r .side) $(echo "$p" | jq -r .leverage)x · giriş $entry · Binance o anda (±3 sn) $lo – $hi"
+          done
+          echo "Şimdiki fiyatlar:"
+          for s in $(jq -r '.[].symbol' /tmp/pozisyonlar.json | sort -u); do
+            echo "$s $(curl -fsS "https://data-api.binance.vision/api/v3/ticker/price?symbol=${s}USDT" | jq -r .price)"
+          done

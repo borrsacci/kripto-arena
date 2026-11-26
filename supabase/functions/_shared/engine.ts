@@ -42,9 +42,9 @@ export function closeValue(side: Side, qty: number, entry: number, margin: numbe
 }
 
 /** Açık pozisyonun anlık değeri (likidasyon fiyatını geçtiyse 0) */
-export function positionValue(p: { side: Side; qty: number; entry_price: number; margin: number; liq_price: number }, price: number): number {
+export function positionValue(p: { side: Side; qty: number; entry_price: number; margin: number; liq_price: number }, price: number, fee = TAKER_FEE): number {
   const liquidated = p.side === 'long' ? price <= p.liq_price : price >= p.liq_price;
-  return liquidated ? 0 : closeValue(p.side, p.qty, p.entry_price, p.margin, price);
+  return liquidated ? 0 : closeValue(p.side, p.qty, p.entry_price, p.margin, price, fee);
 }
 
 /** İşlem açılırken önizleme */
@@ -189,6 +189,17 @@ export const TIERS: Tier[] = [
   { name: 'Usta', min: 40, color: '#B18CFF' },
   { name: 'Efsane', min: 50, color: '#FF6B8A' },
 ];
+/** Seviye indirimi: seviye 1'den sonraki her seviye için %1, en fazla %40 (SQL fee_discount ile aynı) */
+export const MAX_FEE_DISCOUNT = 0.4;
+export function feeDiscount(level: number): number {
+  return Math.min(MAX_FEE_DISCOUNT, Math.max(0, level - 1) * 0.01);
+}
+/** XP'ye göre indirimli komisyon oranları */
+export function feesFor(xp: number) {
+  const d = feeDiscount(levelFor(xp));
+  return { discount: d, taker: TAKER_FEE * (1 - d), maker: MAKER_FEE * (1 - d) };
+}
+
 export function tierFor(level: number): Tier {
   let t = TIERS[0];
   for (const x of TIERS) if (level >= x.min) t = x;

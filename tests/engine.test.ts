@@ -4,7 +4,7 @@ import { ACHIEVEMENTS } from '../supabase/functions/_shared/achievements.ts';
 import { COINS } from '../supabase/functions/_shared/coins.ts';
 import {
   type Candle, closeValue, levelFor, levelProgress, liqPrice, priceForRoe, preview, roe, scanOrder, scanPosition,
-  tierFor, validateTpSl, xpForLevel,
+  feeDiscount, feesFor, tierFor, validateTpSl, xpForLevel,
 } from '../supabase/functions/_shared/engine.ts';
 
 const sec = (t: number, o: number, h: number, l: number, c: number): Candle => ({ t: t * 1000, ms: 1000, o, h, l, c });
@@ -99,6 +99,17 @@ describe('seviye ve lig', () => {
     expect(tierFor(1).name).toBe('Çaylak');
     expect(tierFor(17).name).toBe('Altın');
     expect(tierFor(70).name).toBe('Efsane');
+  });
+});
+
+describe('seviye indirimi', () => {
+  it('her seviye %1, en fazla %40', () => {
+    expect(feeDiscount(1)).toBe(0);
+    expect(feeDiscount(10)).toBeCloseTo(0.09);
+    expect(feeDiscount(41)).toBeCloseTo(0.4);
+    expect(feeDiscount(80)).toBeCloseTo(0.4);
+    expect(feesFor(4500).taker).toBeCloseTo(0.0005 * 0.91);
+    expect(feesFor(0).maker).toBeCloseTo(0.0002);
   });
 });
 

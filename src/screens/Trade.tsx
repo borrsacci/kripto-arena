@@ -1,8 +1,8 @@
 import { CandlestickChart, ChevronDown, LineChart, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { COIN_BY_SYMBOL, COINS } from '../../supabase/functions/_shared/coins.ts';
-import { MAKER_FEE, MIN_MARGIN, preview, type Side, TAKER_FEE, validateTpSl } from '../../supabase/functions/_shared/engine.ts';
-import { useMyAccount } from '../lib/calc';
+import { MIN_MARGIN, preview, type Side, validateTpSl } from '../../supabase/functions/_shared/engine.ts';
+import { feeLabel, useMyAccount, useMyFees } from '../lib/calc';
 import { parseNum, pct, price, priceInput, qty as fmtQty, usd } from '../lib/format';
 import { tap, thump } from '../lib/native';
 import { usePrices } from '../lib/prices';
@@ -167,7 +167,8 @@ function OrderPanel({ symbol }: { symbol: string }) {
     if (type === 'limit' && !limitStr && tick) setLimitStr(priceInput(tick.price));
   }, [type]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fee = type === 'market' ? TAKER_FEE : MAKER_FEE;
+  const fees = useMyFees();
+  const fee = type === 'market' ? fees.taker : fees.maker;
   const balance = acc?.balance ?? 0;
   const margin = parseNum(marginStr) ?? 0;
   const limit = parseNum(limitStr);
@@ -246,7 +247,7 @@ function OrderPanel({ symbol }: { symbol: string }) {
           </div>
           <input className={inputCls} inputMode="decimal" value={limitStr} onChange={(e) => setLimitStr(e.target.value)} />
           <p className="mt-1 text-xs text-dim">
-            {side === 'long' ? 'Fiyat bu seviyeye düşünce alınır.' : 'Fiyat bu seviyeye çıkınca satılır.'} Komisyon %0,02.
+            {side === 'long' ? 'Fiyat bu seviyeye düşünce alınır.' : 'Fiyat bu seviyeye çıkınca satılır.'} Komisyon {feeLabel(fees.maker)}.
           </p>
         </div>
       )}
@@ -313,7 +314,16 @@ function OrderPanel({ symbol }: { symbol: string }) {
       <div className="rounded-xl bg-ink px-3.5 py-2.5">
         <Row label="Pozisyon büyüklüğü">{pv ? usd(pv.notional) : '—'}</Row>
         <Row label="Miktar">{pv ? `${fmtQty(pv.qty)} ${symbol}` : '—'}</Row>
-        <Row label={`Komisyon (%${(fee * 100).toFixed(2).replace('.', ',')})`}>{pv ? usd(pv.fee) : '—'}</Row>
+        <Row
+          label={
+            <>
+              Komisyon ({feeLabel(fee)})
+              {fees.discount > 0 && <span className="ml-1 text-[11px] font-semibold text-accent">seviye indirimi %{Math.round(fees.discount * 100)}</span>}
+            </>
+          }
+        >
+          {pv ? usd(pv.fee) : '—'}
+        </Row>
         <Row label="Likidasyon fiyatı">
           {pv ? (
             <span className="text-down">

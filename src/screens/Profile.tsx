@@ -2,9 +2,9 @@ import { Bell, Gift, HelpCircle, LogOut, Pencil, Shield } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { type Achievement, ACHIEVEMENTS, TIER_COLORS } from '../../supabase/functions/_shared/achievements.ts';
 import { COINS } from '../../supabase/functions/_shared/coins.ts';
-import { BAILOUT_AMOUNT, BAILOUT_BELOW, levelProgress, MMR, START_BALANCE, TIERS, tierFor } from '../../supabase/functions/_shared/engine.ts';
+import { BAILOUT_AMOUNT, BAILOUT_BELOW, feeDiscount, levelProgress, MAX_FEE_DISCOUNT, MMR, START_BALANCE, TIERS, tierFor } from '../../supabase/functions/_shared/engine.ts';
 import { invoke } from '../lib/api';
-import { useLeaderboard, useMyAccount } from '../lib/calc';
+import { feeLabel, useLeaderboard, useMyAccount, useMyFees } from '../lib/calc';
 import { int, parseNum, pct, usd, when } from '../lib/format';
 import { cheer } from '../lib/native';
 import { forgetPush, pushAvailable, pushPermission, setupPush } from '../lib/push';
@@ -24,6 +24,8 @@ export function ProfileScreen() {
   const [ach, setAch] = useState<Achievement | null>(null);
   const lp = levelProgress(me.xp);
   const tier = tierFor(lp.level);
+  const fees = useMyFees();
+  const nextDisc = feeDiscount(lp.level + 1);
   const next = TIERS.find((t) => t.min > lp.level);
   const mine = useMemo(() => new Map(achievements.filter((a) => a.user_id === me.id).map((a) => [a.code, a.unlocked_at])), [achievements, me.id]);
   const groups = useMemo(() => {
@@ -65,6 +67,27 @@ export function ProfileScreen() {
           </div>
           {next && <div className="mt-1.5 text-xs text-dim">{next.name} ligi seviye {next.min}'da</div>}
         </button>
+        <div className="mt-3 flex items-center justify-between rounded-xl bg-ink px-3 py-2.5 text-sm">
+          <div>
+            <div className="font-semibold">
+              Komisyon indirimi <span className="text-accent">%{Math.round(fees.discount * 100)}</span>
+            </div>
+            <div className="text-xs text-dim">
+              Piyasa {feeLabel(fees.taker)} · Limit {feeLabel(fees.maker)}
+            </div>
+          </div>
+          <div className="text-right text-xs text-dim">
+            {nextDisc > fees.discount ? (
+              <>
+                Seviye {lp.level + 1}'de
+                <br />
+                <span className="font-semibold text-text">%{Math.round(nextDisc * 100)}</span>
+              </>
+            ) : (
+              'En yüksek indirim'
+            )}
+          </div>
+        </div>
       </Card>
 
       <DailyCard />
@@ -267,7 +290,8 @@ function TiersSheet({ open, onClose, level }: { open: boolean; onClose: () => vo
   return (
     <Sheet open={open} onClose={onClose} title="Ligler">
       <p className="mb-4 text-sm leading-relaxed text-mute">
-        XP kazandıkça seviye atlarsın, seviyen ligini belirler. XP; işlem kapatmaktan (kârlıysa daha çok, günde en çok 400), başarımlardan ve günlük ödülden gelir.
+        XP kazandıkça seviye atlarsın, seviyen ligini belirler. XP; işlem kapatmaktan (kârlıysa daha çok, günde en çok 400), başarımlardan ve günlük ödülden gelir. Her seviye
+        komisyonda %1 indirim getirir (en fazla %{Math.round(MAX_FEE_DISCOUNT * 100)}, seviye {Math.round(MAX_FEE_DISCOUNT * 100) + 1} ve üstü).
       </p>
       <div className="space-y-1.5">
         {TIERS.map((t) => {
@@ -277,8 +301,9 @@ function TiersSheet({ open, onClose, level }: { open: boolean; onClose: () => vo
               <span className="font-display text-lg font-bold" style={{ color: t.color }}>
                 {t.name}
               </span>
-              <span className="text-sm text-mute">
+              <span className="text-right text-sm text-mute">
                 Seviye {t.min}+{here && ' · buradasın'}
+                <span className="block text-[11px] text-dim">komisyon indirimi %{Math.round(feeDiscount(t.min) * 100)}+</span>
               </span>
             </div>
           );
@@ -294,7 +319,7 @@ function HelpSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
     ['Long ve short', 'Long: fiyat yükselirse kazanırsın. Short: fiyat düşerse kazanırsın.'],
     ['Kaldıraç', 'Marjin (teminat) olarak koyduğun parayı katlar. 1.000 $ marjin ve 10x ile 10.000 $\'lık pozisyon açarsın: fiyat %1 lehine giderse %10 kazanırsın, %1 aleyhine giderse %10 kaybedersin.'],
     ['Likidasyon', `Kayıp marjine yaklaşınca pozisyon zorla kapanır ve marjinin tamamı gider. Likidasyon fiyatı = giriş × (1 ∓ 1/kaldıraç ± %${MMR * 100}). Kaldıraç ne kadar yüksekse likidasyon o kadar yakındır.`],
-    ['Komisyon', 'Piyasa emri işlem büyüklüğünün %0,05\'i, limit emri %0,02\'si. Açılışta ve kapanışta alınır.'],
+    ['Komisyon', 'Binance vadeli ile aynı: piyasa emri işlem büyüklüğünün %0,05\'i, limit emri %0,02\'si; açılışta ve kapanışta alınır. Seviye 1\'den sonraki her seviye %1 indirim getirir (en fazla %40). Açık pozisyondaki "Şimdi kapatırsan net" satırı iki komisyon da düşülmüş tutardır.'],
     ['Limit emri', 'Fiyatı sen belirlersin; fiyat o seviyeye gelince emir kendiliğinden pozisyona dönüşür. Beklerken marjin ayrılır, iptal edersen geri gelir.'],
     ['TP ve SL', 'Kâr al (TP) ve zarar durdur (SL) seviyeleri. Fiyat değince pozisyon kapanır; uygulama kapalı olsa bile sunucu saniyelik fiyat verisiyle kontrol eder.'],
     ['Sıralama', 'Toplam kâr = şu anki varlığın − sana verilen toplam sermaye. Açık pozisyonlar canlı fiyattan hesaplanır. Haftalık sıralama her pazartesi sıfırlanır.'],

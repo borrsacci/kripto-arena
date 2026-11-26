@@ -1,6 +1,6 @@
 // Hesap özeti ve sıralama: canlı fiyatlarla anlık varlık, gerçekleşmemiş kâr/zarar
 import { useMemo } from 'react';
-import { grossPnl, levelFor, positionValue, roe } from '../../supabase/functions/_shared/engine.ts';
+import { feesFor, grossPnl, levelFor, positionValue, roe, TAKER_FEE } from '../../supabase/functions/_shared/engine.ts';
 import { usePrices, type Tick } from './prices';
 import { useStore } from './store';
 import type { Order, Position, Profile } from './types';
@@ -17,11 +17,14 @@ export interface Account {
   openCount: number;
 }
 
-export function livePnl(p: Position, price: number | undefined) {
+/** Canlı kâr/zarar. pnl/roe: komisyonsuz (borsalardaki gibi). net: şimdi kapatılsa açılış+kapanış komisyonu düşülmüş kâr. */
+export function livePnl(p: Position, price: number | undefined, takerFee = TAKER_FEE) {
   const px = price ?? p.entry_price;
   const liquidated = p.side === 'long' ? px <= p.liq_price : px >= p.liq_price;
   const pnl = liquidated ? -p.margin : grossPnl(p.side, p.qty, p.entry_price, px);
-  return { price: px, pnl, roe: liquidated ? -1 : roe(p.side, p.entry_price, px, p.leverage), value: positionValue(p, px) };
+  const value = positionValue(p, px, takerFee);
+  const net = value - p.margin - p.open_fee;
+  return { price: px, pnl, roe: liquidated ? -1 : roe(p.side, p.entry_price, px, p.leverage), value, net, netRoe: net / p.margin, closeFee: liquidated ? 0 : p.qty * px * takerFee };
 }
 
 export function accountOf(profile: Profile, positions: Position[], orders: Order[], ticks: Record<string, Tick>): Account {
@@ -29,9 +32,10 @@ export function accountOf(profile: Profile, positions: Position[], orders: Order
   let upnl = 0;
   let value = 0;
   let openCount = 0;
+  const fee = feesFor(profile.xp).taker;
   for (const p of positions) {
     if (p.user_id !== profile.id) continue;
-    const l = livePnl(p, ticks[p.symbol]?.price);
+    const l = livePnl(p, ticks[p.symbol]?.price, fee);
     marginUsed += p.margin;
     upnl += l.pnl;
     value += l.value;
@@ -72,4 +76,21 @@ export function useLeaderboard(): LeaderRow[] {
       .filter((p) => p.status === 'active')
       .map((p) => ({ profile: p, account: accountOf(p, positions, orders, ticks), level: levelFor(p.xp), achievements: achCount.get(p.id) ?? 0 }));
   }, [profiles, positions, orders, achievements, ticks]);
+}
+
+/** Oturumdaki kullanıcının indirimli komisyon oranları */
+export function useMyFees() {
+  const xp = useStore((s) => s.me?.xp ?? 0);
+  return useMemo(() => feesFor(xp), [xp]);
+}
+
+/** Bir kullanıcının indirimli komisyon oranları (pozisyon kartları için) */
+export function useFeesOf(userId: string) {
+  const xp = useStore((s) => s.profiles.find((p) => p.id === userId)?.xp ?? (s.me?.id === userId ? s.me.xp : 0));
+  return useMemo(() => feesFor(xp), [xp]);
+}
+
+/** Komisyon oranını yazıya çevirir: 0.000455 → %0,0455 */
+export function feeLabel(rate: number): string {
+  return `%${(rate * 100).toFixed(4).replace(/0+$/, '').replace(/\.$/, '').replace('.', ',')}`;
 }

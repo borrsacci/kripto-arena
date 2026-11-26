@@ -222,9 +222,11 @@ d('veritabanı kuralları', () => {
   it('limit emir: marjin ayrılır, fiyat gelince pozisyon açılır, sonra TP ile kapanır', async () => {
     const t0 = Date.parse('2026-11-21T10:00:00Z');
     const b0 = await bal(B);
+    const { feesFor } = await import('../supabase/functions/_shared/engine.ts');
+    const makerB = feesFor((await prof(B)).xp).maker; // B bu noktada seviye atlamış: indirimli
     const o = (await as('service', `select * from svc_place_order($1,'SOL','long',10,1000,90,99,null)`, [B]))[0];
-    expect(Number(o.fee)).toBeCloseTo(2);
-    expect(await bal(B)).toBeCloseTo(b0 - 1002);
+    expect(Number(o.fee)).toBeCloseTo(10000 * makerB, 4);
+    expect(await bal(B)).toBeCloseTo(b0 - 1000 - Number(o.fee));
     await rewind('orders', o.id, t0);
     const market = fakeMarket({ SOL: candlesFrom(t0, [[100, 100, 95, 96], [96, 96, 89.5, 90], [90, 99.5, 90, 99]]) });
     const r = await settle(store, market, { now: t0 + 5000 });
@@ -233,14 +235,14 @@ d('veritabanı kuralları', () => {
     expect(Number(pos.entry_price)).toBe(90);
     expect(pos.opened_at.getTime()).toBe(t0 + 1000);
     expect(pos.close_reason).toBe('tp');
-    expect(Number(pos.open_fee)).toBeCloseTo(2);
+    expect(Number(pos.open_fee)).toBeCloseTo(Number(o.fee));
     expect((await one('select status from orders where id=$1', [o.id])).status).toBe('filled');
     expect(await achs(B)).toContain('limit_fill');
     // iptal: ayrılan para geri gelir
     const o2 = (await as('service', `select * from svc_place_order($1,'ETH','short',5,500,4000)`, [B]))[0];
     const b1 = await bal(B);
     await as(B, 'select cancel_order($1)', [o2.id]);
-    expect(await bal(B)).toBeCloseTo(b1 + 500 + 0.5);
+    expect(await bal(B)).toBeCloseTo(b1 + 500 + Number(o2.fee));
     await expectErr(as(B, 'select cancel_order($1)', [o2.id]), /iptal edildi/);
     await expectErr(as(C, 'select cancel_order($1)', [o.id]), /bulunamadı/);
   });
@@ -329,6 +331,25 @@ d('veritabanı kuralları', () => {
     await as(C, 'select set_push_enabled(false)');
     expect((await prof(C)).push_enabled).toBe(false);
     expect((await as('service', 'select token from push_tokens where user_id=$1', [C])).length).toBe(1);
+  });
+
+  it('seviye indirimi: SQL formülü uygulamayla aynı, açılış/kapanış/limit komisyonuna uygulanır', async () => {
+    const { feeDiscount, xpForLevel } = await import('../supabase/functions/_shared/engine.ts');
+    for (const l of [1, 2, 5, 10, 25, 41, 60]) {
+      for (const xp of [xpForLevel(l), xpForLevel(l + 1) - 1]) {
+        const r = await one('select level_for($1)::int as l, fee_discount($1)::float as d', [xp]);
+        expect(r.l).toBe(l);
+        expect(r.d).toBeCloseTo(feeDiscount(l));
+      }
+    }
+    const D = await signup('deniz', 'Deniz');
+    await admin.query('update profiles set xp = $2 where id=$1', [D, xpForLevel(10)]); // seviye 10: %9 indirim
+    const p = await open(D, 'BTC', 'long', 10, 1000, 50000);
+    expect(Number(p.open_fee)).toBeCloseTo(10000 * 0.0005 * 0.91, 4);
+    const r = await close(p.id, 50000, 1, D);
+    expect(Number(r.position.close_fee)).toBeCloseTo(10000 * 0.0005 * 0.91, 4);
+    const o = (await as('service', `select * from svc_place_order($1,'ETH','long',5,1000,1000)`, [D]))[0];
+    expect(Number(o.fee)).toBeCloseTo(5000 * 0.0002 * 0.91, 4);
   });
 
   it('para korunumu: bakiye = hareketlerin toplamı', async () => {

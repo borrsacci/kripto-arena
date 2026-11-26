@@ -2,8 +2,8 @@
 import html2canvas from 'html2canvas';
 import { Share2, Target, X } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
-import { closeValue, priceForRoe, TAKER_FEE, validateTpSl } from '../../supabase/functions/_shared/engine.ts';
-import { livePnl } from '../lib/calc';
+import { closeValue, priceForRoe, validateTpSl } from '../../supabase/functions/_shared/engine.ts';
+import { feeLabel, livePnl, useFeesOf } from '../lib/calc';
 import { duration, parseNum, pct, price, priceInput, usd, when } from '../lib/format';
 import { shareImage, thump } from '../lib/native';
 import { usePrices } from '../lib/prices';
@@ -14,7 +14,8 @@ import { Button, Card, Segmented, Sheet, cn, confirm, inputCls, toast } from './
 
 export function PositionCard({ p, mine, showUser }: { p: Position; mine: boolean; showUser?: string }) {
   const tick = usePrices((s) => s.ticks[p.symbol]);
-  const l = livePnl(p, tick?.price);
+  const fees = useFeesOf(p.user_id);
+  const l = livePnl(p, tick?.price, fees.taker);
   const [sheet, setSheet] = useState<'close' | 'tpsl' | 'share' | null>(null);
   const liqDist = Math.abs(l.price - p.liq_price) / l.price;
   return (
@@ -50,6 +51,17 @@ export function PositionCard({ p, mine, showUser }: { p: Position; mine: boolean
         </Cell>
       </div>
       {mine && (
+        <div className="flex items-center justify-between rounded-xl bg-ink px-3 py-2 text-[13px]">
+          <span className="text-mute">Şimdi kapatırsan net</span>
+          <span className="num text-right">
+            <Pnl value={l.net} roe={l.netRoe} />
+            <span className="block text-[11px] text-dim">
+              komisyonlar: {usd(p.open_fee)} + {usd(l.closeFee)}
+            </span>
+          </span>
+        </div>
+      )}
+      {mine && (
         <div className="flex gap-2">
           <Button size="sm" className="flex-1" onClick={() => setSheet('tpsl')}>
             <Target size={15} /> TP / SL
@@ -82,8 +94,9 @@ function CloseSheet({ p, open, onClose }: { p: Position; open: boolean; onClose:
   const tick = usePrices((s) => s.ticks[p.symbol]);
   const [frac, setFrac] = useState<'0.25' | '0.5' | '0.75' | '1'>('1');
   const f = Number(frac);
+  const fees = useFeesOf(p.user_id);
   const px = tick?.price ?? p.entry_price;
-  const value = closeValue(p.side, p.qty * f, p.entry_price, p.margin * f, px);
+  const value = closeValue(p.side, p.qty * f, p.entry_price, p.margin * f, px, fees.taker);
   const net = value - p.margin * f - p.open_fee * f;
   const go = async () => {
     const r = await tradeApi.close(p.id, f);
@@ -97,9 +110,9 @@ function CloseSheet({ p, open, onClose }: { p: Position; open: boolean; onClose:
       <div className="mt-4 space-y-1 rounded-xl bg-ink p-3.5">
         <Line label="Kapanış fiyatı (yaklaşık)">{price(px)}</Line>
         <Line label="Kapanan marjin">{usd(p.margin * f)}</Line>
-        <Line label="Komisyon (%0,05)">{usd(p.qty * f * px * TAKER_FEE)}</Line>
+        <Line label={`Kapanış komisyonu (${feeLabel(fees.taker)})`}>{usd(p.qty * f * px * fees.taker)}</Line>
         <Line label="Hesabına dönecek">{usd(value)}</Line>
-        <Line label="Net kâr / zarar">
+        <Line label="Net kâr / zarar (komisyonlar dahil)">
           <Pnl value={net} />
         </Line>
       </div>
@@ -205,7 +218,8 @@ export function ShareSheet({ p, open, onClose }: { p: Position; open: boolean; o
   const tick = usePrices((s) => s.ticks[p.symbol]);
   const card = useRef<HTMLDivElement>(null);
   const closed = p.status !== 'open';
-  const l = livePnl(p, tick?.price);
+  const fees = useFeesOf(p.user_id);
+  const l = livePnl(p, tick?.price, fees.taker);
   const r = closed ? (p.roe ?? 0) : l.roe;
   const exit = closed ? (p.close_price ?? 0) : l.price;
   const up = r >= 0;

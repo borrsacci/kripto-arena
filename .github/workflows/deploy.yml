@@ -87,7 +87,7 @@ jobs:
           fi
           echo "$FIREBASE_SERVICE_ACCOUNT" | jq -e .private_key >/dev/null || { echo "::error::FIREBASE_SERVICE_ACCOUNT geçerli bir JSON değil (Firebase → Hizmet hesapları → Yeni özel anahtar)."; exit 1; }
           printf 'FCM_SERVICE_ACCOUNT_B64=%s\n' "$(echo "$FIREBASE_SERVICE_ACCOUNT" | base64 -w0)" > /tmp/fcm.env
-          supabase secrets set --env-file /tmp/fcm.env --project-ref "$REF"
+          supabase secrets set --env-file /tmp/fcm.env --project-ref "$REF" --yes
           rm /tmp/fcm.env
 
   android:

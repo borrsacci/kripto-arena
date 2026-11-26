@@ -76,6 +76,19 @@ jobs:
       - name: Sunucu fonksiyonlarını yükle
         if: steps.check.outputs.configured == 'true'
         run: supabase functions deploy --project-ref "$REF" --yes
+      - name: Bildirim anahtarını sunucuya yükle
+        if: steps.check.outputs.configured == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT yok; telefon bildirimleri kapalı."
+            exit 0
+          fi
+          echo "$FIREBASE_SERVICE_ACCOUNT" | jq -e .private_key >/dev/null || { echo "::error::FIREBASE_SERVICE_ACCOUNT geçerli bir JSON değil (Firebase → Hizmet hesapları → Yeni özel anahtar)."; exit 1; }
+          printf 'FCM_SERVICE_ACCOUNT_B64=%s\n' "$(echo "$FIREBASE_SERVICE_ACCOUNT" | base64 -w0)" > /tmp/fcm.env
+          supabase secrets set --env-file /tmp/fcm.env --project-ref "$REF"
+          rm /tmp/fcm.env
 
   android:
     name: APK
@@ -118,6 +131,18 @@ jobs:
           fi
           echo "::add-mask::$ANON"; echo "::add-mask::$SERVICE"
           echo "ANON=$ANON" >> "$GITHUB_ENV"; echo "SERVICE=$SERVICE" >> "$GITHUB_ENV"
+      - name: Firebase ayarı (telefon bildirimleri)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            jq -e '.client[] | select(.client_info.android_client_info.package_name=="com.kriptoarena.app")' android/app/google-services.json >/dev/null \
+              || { echo "::error::google-services.json içinde com.kriptoarena.app paketi yok. Firebase'de Android uygulamasını bu paket adıyla ekleyin."; exit 1; }
+            echo "VITE_PUSH=1" >> "$GITHUB_ENV"
+          else
+            echo "::notice::GOOGLE_SERVICES_JSON yok; APK bildirimsiz derlenecek."
+          fi
       - run: npm ci
       - name: Web uygulamasını derle
         run: npm run build

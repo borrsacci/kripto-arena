@@ -317,6 +317,20 @@ d('veritabanı kuralları', () => {
     expect(Number((await one('select equity from equity_snapshots where user_id=$1', [B])).equity)).toBeCloseTo(12345.678);
   });
 
+  it('bildirim anahtarları: sadece fonksiyonla kaydedilir, telefon hesap değiştirirse anahtar taşınır', async () => {
+    const tok = 'fcm-token-'.padEnd(60, 'x');
+    await as(B, 'select register_push_token($1)', [tok]);
+    expect((await one('select user_id from push_tokens where token=$1', [tok])).user_id).toBe(B);
+    await as(C, 'select register_push_token($1)', [tok]);
+    expect((await one('select user_id from push_tokens where token=$1', [tok])).user_id).toBe(C);
+    await expectErr(as(B, 'select * from push_tokens'), /permission denied/);
+    await as(B, 'select unregister_push_token($1)', [tok]); // başkasının anahtarını silemez
+    expect((await one('select count(*)::int as n from push_tokens')).n).toBe(1);
+    await as(C, 'select set_push_enabled(false)');
+    expect((await prof(C)).push_enabled).toBe(false);
+    expect((await as('service', 'select token from push_tokens where user_id=$1', [C])).length).toBe(1);
+  });
+
   it('para korunumu: bakiye = hareketlerin toplamı', async () => {
     // (C'nin bakiyesi testte elle değiştirildiği için A ve B kontrol edilir)
     const r = await admin.query(`select p.id, p.balance::numeric = coalesce(sum(t.amount),0) as ok from profiles p left join transactions t on t.user_id = p.id where p.id = any($1) group by p.id`, [[A, B]]);

@@ -93,3 +93,25 @@ save(mk, f'{PUB}/icon-maskable-512.png')
 with open(f'{RES}/values/ic_launcher_background.xml', 'w') as fh:
     fh.write('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#0B0E14</color>\n</resources>\n')
 print('ok')
+
+# Bildirim çubuğu ikonu: şeffaf zemin üzerinde beyaz silüet (Android bunu tek renk gösterir)
+def notify_icon(n):
+    S = n * 4
+    im = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    W = (255, 255, 255, 255)
+    p = int(S * 0.12)
+    w = S - 2 * p
+    bw = int(w * 0.22)
+    gap = (w - 3 * bw) // 2
+    wick = max(4, int(w * 0.06))
+    for i, (bt, bb, wt, wb) in enumerate([(0.42, 0.72, 0.32, 0.84), (0.28, 0.6, 0.16, 0.7), (0.06, 0.44, 0.0, 0.54)]):
+        x0 = p + i * (bw + gap)
+        cx = x0 + bw // 2
+        d.rectangle([cx - wick // 2, p + int(w * wt), cx + wick // 2, p + int(w * wb)], fill=W)
+        d.rounded_rectangle([x0, p + int(w * bt), x0 + bw, p + int(w * bb)], int(bw * 0.15), fill=W)
+    d.rectangle([p, p + int(w * 0.92), S - p, p + int(w * 0.92) + wick], fill=W)
+    return im.resize((n, n), Image.LANCZOS)
+
+for d, k in dens.items():
+    save(notify_icon(int(24 * k)), f'{RES}/drawable-{d}/ic_stat_notify.png')

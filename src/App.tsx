@@ -6,6 +6,7 @@ import { useMyAccount } from './lib/calc';
 import { pct, price, usd } from './lib/format';
 import { buzz, cheer, onBack, onResume, tap } from './lib/native';
 import { startPrices, wakePrices } from './lib/prices';
+import { onPushOpen, setupPush } from './lib/push';
 import { useStore } from './lib/store';
 import { isConfigured, supabase } from './lib/supabase';
 import { checkUpdate, dismissUpdate, type UpdateInfo } from './lib/update';
@@ -93,6 +94,12 @@ function Shell() {
     setTab(t);
     document.getElementById('main')?.scrollTo({ top: 0 });
   };
+
+  // telefon bildirimleri: izin iste ve cihazı kaydet; bildirime dokununca ilgili sekmeyi aç
+  useEffect(() => {
+    onPushOpen((t) => setTab((['markets', 'trade', 'portfolio', 'ranks', 'profile'] as Tab[]).includes(t as Tab) ? (t as Tab) : 'portfolio'));
+    setupPush();
+  }, []);
 
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   useEffect(() => {

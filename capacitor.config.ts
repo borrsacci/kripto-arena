@@ -7,6 +7,8 @@ const config: CapacitorConfig = {
   android: { backgroundColor: '#0B0E14' },
   plugins: {
     StatusBar: { backgroundColor: '#0B0E14', style: 'DARK', overlaysWebView: false },
+    // uygulama açıkken bildirim tepsiye düşmesin; uygulama zaten ekranda haber veriyor
+    PushNotifications: { presentationOptions: [] },
   },
 };
 

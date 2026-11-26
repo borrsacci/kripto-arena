@@ -1,5 +1,5 @@
-import { Gift, HelpCircle, LogOut, Pencil, Shield } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Bell, Gift, HelpCircle, LogOut, Pencil, Shield } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { type Achievement, ACHIEVEMENTS, TIER_COLORS } from '../../supabase/functions/_shared/achievements.ts';
 import { COINS } from '../../supabase/functions/_shared/coins.ts';
 import { BAILOUT_AMOUNT, BAILOUT_BELOW, levelProgress, MMR, START_BALANCE, TIERS, tierFor } from '../../supabase/functions/_shared/engine.ts';
@@ -7,6 +7,7 @@ import { invoke } from '../lib/api';
 import { useLeaderboard, useMyAccount } from '../lib/calc';
 import { int, parseNum, pct, usd, when } from '../lib/format';
 import { cheer } from '../lib/native';
+import { forgetPush, pushAvailable, pushPermission, setupPush } from '../lib/push';
 import { rpcAfter, useStore } from '../lib/store';
 import { supabase } from '../lib/supabase';
 import { currentVersion } from '../lib/update';
@@ -114,6 +115,8 @@ export function ProfileScreen() {
         ))}
       </Section>
 
+      <PushCard />
+
       <div className="space-y-2">
         <Button className="w-full" onClick={() => setSheet('help')}>
           <HelpCircle size={18} /> Nasıl oynanır?
@@ -127,7 +130,10 @@ export function ProfileScreen() {
           variant="quiet"
           className="w-full"
           onClick={async () => {
-            if (await confirm('Çıkış yap', 'Bu cihazda oturumunuz kapanacak.', 'Çıkış yap')) await supabase.auth.signOut();
+            if (await confirm('Çıkış yap', 'Bu cihazda oturumunuz kapanacak.', 'Çıkış yap')) {
+              await forgetPush().catch(() => {});
+              await supabase.auth.signOut();
+            }
           }}
         >
           <LogOut size={18} /> Çıkış yap
@@ -157,6 +163,41 @@ export function ProfileScreen() {
       <TiersSheet open={sheet === 'tiers'} onClose={() => setSheet(null)} level={lp.level} />
       {me.is_admin && <AdminSheet open={sheet === 'admin'} onClose={() => setSheet(null)} />}
     </div>
+  );
+}
+
+/** Telefon bildirimleri aç/kapa */
+function PushCard() {
+  const me = useStore((s) => s.me)!;
+  const [perm, setPerm] = useState<string>('unavailable');
+  useEffect(() => {
+    pushPermission().then(setPerm);
+  }, []);
+  if (!pushAvailable) return null;
+  const on = me.push_enabled && perm === 'granted';
+  const toggle = async () => {
+    if (!on) {
+      const r = await setupPush();
+      setPerm(await pushPermission());
+      if (r === 'denied') throw new Error('Bildirim izni kapalı. Telefon Ayarlar → Uygulamalar → Kripto Arena → Bildirimler bölümünden açın.');
+      await rpcAfter('set_push_enabled', { p_on: true });
+      toast('Bildirimler açıldı');
+    } else {
+      await rpcAfter('set_push_enabled', { p_on: false });
+      toast('Bildirimler kapatıldı');
+    }
+  };
+  return (
+    <Card className="flex items-center gap-3">
+      <Bell className={on ? 'text-accent' : 'text-dim'} />
+      <div className="flex-1 text-sm">
+        <div className="font-semibold">Telefon bildirimleri</div>
+        <div className="text-dim">Limit emri dolunca, kâr al / zarar durdur çalışınca ve likidasyonda haber ver.</div>
+      </div>
+      <button onClick={toggle} className={cn('relative h-7 w-12 shrink-0 rounded-full transition-colors', on ? 'bg-accent' : 'bg-panel-2')} aria-label="Bildirimler">
+        <span className={cn('absolute top-1 size-5 rounded-full bg-text transition-all', on ? 'left-6' : 'left-1')} />
+      </button>
+    </Card>
   );
 }
 

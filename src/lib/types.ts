@@ -23,6 +23,7 @@ export interface Profile {
   daily_streak: number;
   last_daily: string | null;
   last_bailout_at: string | null;
+  push_enabled: boolean;
   created_at: string;
 }
 

@@ -2,6 +2,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { HttpError } from '../_shared/http.ts';
 import type { OpenOrder, OpenPos, Store } from '../_shared/settle.ts';
+import { closedMessage, filledMessage, notifyUser } from './push.ts';
 
 const URL = Deno.env.get('SUPABASE_URL')!;
 const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -47,10 +48,16 @@ export const store: Store = {
   },
   async fillOrder(id, price, at, checked) {
     const pos = await rpc('svc_fill_order', { p_order: id, p_price: price, p_at: at.toISOString(), p_checked: checked.toISOString() });
-    return pos?.id ? (pos as OpenPos) : null;
+    if (!pos?.id) return null;
+    await notifyUser(svc, pos.user_id, filledMessage({ ...pos, entry_price: Number(pos.entry_price), margin: Number(pos.margin) }));
+    return pos as OpenPos;
   },
   async closePosition(id, price, reason, at) {
-    await rpc('svc_close_position', { p_pos: id, p_price: price, p_reason: reason, p_fraction: 1, p_at: at.toISOString() });
+    const r = await rpc('svc_close_position', { p_pos: id, p_price: price, p_reason: reason, p_fraction: 1, p_at: at.toISOString() });
+    const p = r?.position;
+    if (p) {
+      await notifyUser(svc, p.user_id, closedMessage({ ...p, close_price: Number(p.close_price), pnl: Number(p.pnl), roe: Number(p.roe) }));
+    }
   },
   async markChecked(items) {
     await rpc('svc_mark_checked', { p_items: items });

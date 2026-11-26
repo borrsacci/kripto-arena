@@ -167,6 +167,8 @@ jobs:
           BASE="https://$REF.supabase.co/storage/v1/object"
           # Sadece uygulamanın kendisi değiştiyse yeni sürüm yayınla (CI/test değişiklikleri telefonlara "yeni sürüm" demesin)
           APP_COMMIT=$(git log -1 --format=%H -- src public index.html android supabase/functions/_shared package.json package-lock.json capacitor.config.ts vite.config.ts)
+          # bildirim (Firebase) ayarı eklenince/çıkarılınca da yeni sürüm sayılır
+          [ "$VITE_PUSH" = "1" ] && APP_COMMIT="$APP_COMMIT-push"
           PUBLISHED=$(curl -fsS "$BASE/public/app/version.json?t=$(date +%s)" | jq -r '.commit // empty' || true)
           if [ "$APP_COMMIT" = "$PUBLISHED" ]; then
             echo "Uygulama kodu değişmedi ($APP_COMMIT); yeni sürüm yayınlanmadı." | tee -a "$GITHUB_STEP_SUMMARY"
